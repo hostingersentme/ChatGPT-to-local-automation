@@ -1,0 +1,265 @@
+GPT-to-Local Script Runner
+Description
+
+GPT-to-Local Script Runner is a Chrome extension and Flask server setup that allows you to send commands from ChatGPT to a local server to execute Python scripts. When a specific command is detected in the ChatGPT interface, the Chrome extension sends a request to a Flask server running on your local machine, which then executes the specified script and returns the result.
+Features
+
+    Detects specific commands from the ChatGPT interface.
+    Sends the detected commands to a local Flask server.
+    Executes the specified Python script on the local machine.
+    Returns the output of the script execution.
+
+Installation
+Prerequisites
+
+    Python 3.x
+    Flask
+    Google Chrome
+
+Setup Instructions
+1. Clone the Repository
+
+Clone the repository to your local machine:
+
+sh
+
+git clone https://github.com/your-username/gpt-to-local-script-runner.git
+cd gpt-to-local-script-runner
+
+2. Set Up the Flask Server
+
+    Install Flask:
+
+    sh
+
+pip3 install flask
+
+Create the Flask Server File:
+
+Create a file named server.py in the root of your project directory with the following content:
+
+python
+
+from flask import Flask, request, jsonify
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/run-script', methods=['POST'])
+def run_script():
+    data = request.json
+    script_name = data.get('script_name')
+    try:
+        result = subprocess.run(['python3', script_name], capture_output=True, text=True)
+        return jsonify(result=result.stdout)
+    except Exception as e:
+        return jsonify(error=str(e))
+
+if __name__ == '__main__':
+    app.run(port=5000)
+
+Create a Test Script:
+
+Create a file named quicksort.py in the same directory with the following content:
+
+python
+
+# quicksort.py
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + middle + quicksort(right)
+
+if __name__ == "__main__":
+    arr = [3, 6, 8, 10, 1, 2, 1]
+    sorted_arr = quicksort(arr)
+    print("Sorted array:", sorted_arr)
+
+Run the Flask Server:
+
+sh
+
+    python3 server.py
+
+3. Set Up the Chrome Extension
+
+    Create the Extension Files:
+
+    In the gpt-to-local-script-runner directory, create the following files and directories:
+        manifest.json
+        background.js
+        content.js
+        popup.html
+        popup.js
+        images/ (directory)
+
+    Add the Content to the Files:
+
+        manifest.json:
+
+        json
+
+{
+  "manifest_version": 3,
+  "name": "GPT to Local",
+  "version": "1.0",
+  "description": "Send commands from ChatGPT to a local server",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
+
+background.js:
+
+javascript
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "runScript") {
+    fetch('http://localhost:5000/run-script', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ script_name: request.scriptName })
+    })
+    .then(response => response.json())
+    .then(data => sendResponse(data))
+    .catch(error => sendResponse({ error: error.toString() }));
+    return true;  // Will respond asynchronously.
+  }
+});
+
+content.js:
+
+javascript
+
+// Function to detect command from ChatGPT interface
+function detectCommand() {
+  try {
+    const chatMessages = document.querySelectorAll('.message'); // Adjust selector based on ChatGPT's DOM structure
+    console.log('Chat messages:', chatMessages); // Debug log
+
+    if (!chatMessages || chatMessages.length === 0) {
+      console.log('No messages found.');
+      return null;
+    }
+
+    const lastMessage = chatMessages[chatMessages.length - 1].innerText;
+    if (!lastMessage) {
+      console.log('No innerText found in the last message.');
+      return null;
+    }
+
+    // Check if the last message contains a specific command
+    if (lastMessage.startsWith('!run')) {
+      const command = lastMessage.split(' ')[1]; // Extract the command after '!run'
+      return command;
+    }
+  } catch (error) {
+    console.error('Error detecting command:', error);
+  }
+  return null;
+}
+
+// Continuously check for new messages (this can be optimized)
+setInterval(() => {
+  const command = detectCommand();
+  if (command) {
+    chrome.runtime.sendMessage({ action: 'runScript', scriptName: command }, response => {
+      if (response.error) {
+        console.error(response.error);
+      } else {
+        console.log(response.result);
+      }
+    });
+  }
+}, 5000); // Check every 5 seconds (adjust as needed)
+
+popup.html:
+
+html
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GPT to Local</title>
+  <script src="popup.js"></script>
+</head>
+<body>
+  <h1>GPT to Local</h1>
+  <button id="run-script">Run Script</button>
+</body>
+</html>
+
+popup.js:
+
+javascript
+
+        document.getElementById('run-script').addEventListener('click', () => {
+          const scriptName = prompt('Enter the script name to run:');
+          chrome.runtime.sendMessage({ action: 'runScript', scriptName: scriptName }, response => {
+            if (response.error) {
+              alert('Error: ' + response.error);
+            } else {
+              alert('Result: ' + response.result);
+            }
+          });
+        });
+
+        images/: Place your icon images (icon16.png, icon48.png, icon128.png) in the images directory.
+
+    Load the Extension in Chrome:
+        Open Chrome and go to chrome://extensions/.
+        Enable Developer mode using the toggle in the top right corner.
+        Click "Load unpacked" and select the gpt-to-local-script-runner directory.
+
+Usage
+
+    Start the Flask Server:
+
+    sh
+
+    python3 server.py
+
+    Open ChatGPT in Chrome.
+
+    Issue a Command:
+
+    Type !run quicksort.py in the ChatGPT interface.
+
+    Check the Output:
+        Flask Server Logs: Check the Terminal running the Flask server for logs indicating that the run-script endpoint was hit and quicksort.py was executed.
+        Chrome Developer Tools: Open Chrome Developer Tools (F12 or Cmd+Option+I), go to the "Console" tab, and view any logs or errors from the content script or background script.
+
+Troubleshooting
+
+    Ensure quicksort.py is in the correct directory and accessible by the Flask server.
+    Check the Chrome Developer Tools console for any errors.
+    Check the Flask server logs for any error messages or issues with script execution.
+
+License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
